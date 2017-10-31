@@ -1,0 +1,86 @@
+Whatcom Jail Data Notes
+
+1/1/2000 to 9/21/2017
+select count(distinct(name)) from releases  => 42,072
+select count(distinct(name)) from bookings  => 41,438
+
+Before about 2014 the bookings show a Name ID field, while
+releases show 0, so the name must be used for matching.
+
+After the Name ID starts being used, the names don't always
+match.  E.g. in releases 'CRITCHLOW, JOHN CRAGIN', but in
+bookings 'CRITCHLOW JR, JOHN CRAGIN'.  Where there is a
+non-zero Name ID, it is used for matching.
+
+Data problems
+
+http://apps2.whatcomcounty.us/onlineapps/jailrosters/releases/releasev.jsp?date=10/22/2014
+http://apps2.whatcomcounty.us/onlineapps/jailrosters/releases/releasev.jsp?date=5/19/2015
+Each record on these days repeated numerous times. (Likely other days.)
+Clean up with:
+ delete from releases where rowid not in (
+    select min(rowid) from releases group by name, release_dt )
+5311 duplicate records removed
+
+Booking time later than release time:
+booking:
+48853	FOX, JASON DONALD	DUI	1000	2015-05-25 18:33
+48853	FOX, JASON DONALD	RESISTING ARREST	500	2015-05-25 18:33
+release:
+48853	FOX, JASON DONALD	Bail or Bond	2015-05-25 17:27
+
+booking:
+23658	MURPHY, KYLE MATTHEW	DUI	DUIA	2000	2017-10-06 12:24
+release:
+23658	MURPHY, KYLE MATTHEW	Tranferred to Yakima	2017-10-06 11:46
+
+booking:
+90711	GATES, KRISTINA RENEE	DWLS 3RD DEGREE	WARR	2000	2017-06-26 08:08
+90711	GATES, KRISTINA RENEE	ASSAULT 4TH/FTA	WARR	1000	2017-06-26 08:08
+90711	GATES, KRISTINA RENEE	THEFT 3RD/FTA	WARR	1100	2017-06-26 08:08
+release:
+90711	GATES, KRISTINA RENEE	Transport to Other County	2017-06-26 06:32
+
+Different name/id on release than on booking: (Small set of examples follows.)
+booking:
+53604	GONZALEZ CAMBEROS, GERMAN	ASSAULT 4TH	0	2015-05-28 23:18
+53604	GONZALEZ CAMBEROS, GERMAN	ASSAULT 4TH	3000	2015-05-28 23:18
+53604	GONZALEZ CAMBEROS, GERMAN	INTERFERE W/REPORT OF DV	0	2015-05-28 23:18
+53604	GONZALEZ CAMBEROS, GERMAN	INTERFERE W/REPORT OF DV	3000	2015-05-28 23:18
+release:
+56604	GONZALEZ, GERMAN CAMBEROS	Bail or Bond	2015-05-30 08:00
+
+booking:
+93201	FEHLMAN, KRISTY SUZANNE	DOC Swift & Certain	0	2015-06-17 16:48
+release:
+40024	MAYSHACK, KRISTY SUZANNE	Time Served	2015-06-18 17:02
+
+booking:
+803	CREASEY JR, CHARLES STANLEY	BURGLARY RESIDENTIAL	0	2015-04-13 15:28
+803	CREASEY JR, CHARLES STANLEY	POSS STOLEN PROP 1ST>$5000	0	2015-04-13 15:28
+803	CREASEY JR, CHARLES STANLEY	TRAFFICKING 1ST	0	2015-04-13 15:28
+release:
+71613	CREASY, CHARLES STANLEY	Charge not Filed	2015-04-15 12:34
+
+booking:
+43643	MOLINA-BENITEZ, VALENTIN	DUI	1000	2015-02-21 02:45
+release:
+03862	MOLINA VENITEZ, VALENTIN	Bail or Bond	2015-02-22 15:13
+
+booking:
+07951	BALLWEBER, DEVON MITCHELL	DOC Swift & Certain	0	2015-02-25 15:11
+07951	BALLWEBER, DEVON MITCHELL	SHOPLIFTING GOODS LESS THAN $50	600	2015-02-25 15:11
+release:
+21053	BALLWEBER, ERIC LEE	Other	2015-02-27 06:51
+
+booking:
+37294	PHILLIPS, GERALD ARTHUR	MAL MISCH 2ND >$750	0	2017-08-02 15:16
+release:
+71728	PHILLIPS, GERALD ARTHUR	Personal Recognizance	2017-08-03 15:48
+
+Compute duration of jail stay from booking_dt and release_dt. Produces floating point
+fraction of days.
+
+    update jail_periods set duration = 
+        julianday( jail_periods.release_dt ) - julianday( jail_periods.booking_dt )
+        where jail_periods.booking_dt is not null and jail_periods.release_dt is not null
