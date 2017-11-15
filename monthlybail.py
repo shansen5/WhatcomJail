@@ -46,6 +46,8 @@ for booking in cursor0.execute( sql0, ( from_date, to_date )):
     booking_dt = datetime.strptime( booking[2], '%Y-%m-%d %H:%M' )
     bail = booking[3]
     duration = booking[4]
+    if ( bail == 0 ):
+        continue
     booking_mo = booking_dt.month
     booking_yr = booking_dt.year
     if ( booking_yr < yr or ( booking_yr == yr and booking_mo < mo )):
