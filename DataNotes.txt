@@ -4,7 +4,7 @@ Whatcom Jail Data Notes
 select count(distinct(name)) from releases  => 42,072
 select count(distinct(name)) from bookings  => 41,438
 
-Before about 2014 the bookings show a Name ID field, while
+Before about 2014 the bookings have a Name ID field, while
 releases show 0, so the name must be used for matching.
 
 After the Name ID starts being used, the names don't always
@@ -12,10 +12,80 @@ match.  E.g. in releases 'CRITCHLOW, JOHN CRAGIN', but in
 bookings 'CRITCHLOW JR, JOHN CRAGIN'.  Where there is a
 non-zero Name ID, it is used for matching.
 
+Workflow:
+1.  ScrapeBookings.py 1/1/2000 10/26/2017 > bookings-2000-2017.csv
+This records the data from the bookings web page from the start date to end 
+date provided. The records are written to standard output so they need to be 
+redirected into the CSV file.
+2.  ScrapeReleases.py 1/1/2000 10/26/2017 > releases-2000-2017.csv
+This follows the same process as for bookings above.
+3.  readbookingscsv.py bookings-2000-2017.csv
+This reads the bookings CSV file and inserts the records into a bookings table 
+in the jail2.sqlite database.
+    name_id
+    name
+    charges
+    arrest_type
+    bail
+    booking_dt
+    matched
+4.  readreleasescsv.py releases-2000-2017.csv
+This reads the releases CSV into a releases table.
+    name_id
+    name
+    description
+    release_dt
+5.  computeperiods.py
+This goes through each record in releases and looks in bookings for the most 
+recent booking before the release.  When it is found it is written into a 
+bookings_releases table.
+    booking_row (rowid of the booking)
+    release_row (rowid of the release)
+  The duration fields is initially empty.
+6.  nomatchingreleases.py 1/1/2014
+Go through all bookings beginning with the from_date argument.  If there is
+a matching release record, there should already be a record in 
+bookings_releases for this booking/release pair, so do nothing.  If there
+is not a matching release insert a new record in bookings_releases with the
+booking_row and a null releases_row.  This may let us account for those who
+have not been released and so should be added to the population for all days
+after their booking date.  However it will also count those bad data cases
+such as those released but with no release record, and those whose release
+records have names or ids that do not match booking records.
+7.  dailypopulation.py 1/1/2000 10/25/2017 
+This uses the bookings_releases table to count the population for each day 
+from the start to end dates.
+8.  monthlypopulation.py 1 2000 9 2017 > monthlypopulation.csv
+This uses the dailypopulation table to take an average of the daily population 
+for each month between the start month and year to the end month and year.  It 
+writes to standard output, so redirect to a CSV file to look at it in a 
+spreadsheet.
+9.  durations.py
+Compute duration of jail stay from booking_row and release_row. Produces 
+floating point fraction of days, which is stored in the duration field of the 
+bookings_releases database table.
+10. Booking and release tables merged  (bookings-releases-fullrecords.csv)
+select b.name, b.charges, b.arrest_type, b.bail, b.booking_dt, r.release_dt from bookings b, releases r, bookings_releases br 
+where b.rowid = br.booking_row and r.rowid = br.release_row
+11. Total bail for each booking
+    select count(*), b.name, b.booking_dt, sum( b.bail ), 
+        julianday( r.release_dt ) - julianday( b.booking_dt ) 
+    from bookings b, releases r, bookings_releases br
+    where b.rowid = br.booking_row and r.rowid = br.release_row 
+        and upper(r.description) like 'TIME SERVED%' group by b.booking_dt, b.name
+Gives the number of counts in the booking for the person on that date, along with 
+the total bail and the number of days served, when the person serves time rather than
+posting bail.  From this we can get, based on the month of the booking
+- average bail per booking per month
+- average number of counts per booking per month
+- average time served per booking per month
+
 Data problems
 
+http://apps2.whatcomcounty.us/onlineapps/jailrosters/releases/releasev.jsp?date=10/21/2014
 http://apps2.whatcomcounty.us/onlineapps/jailrosters/releases/releasev.jsp?date=10/22/2014
 http://apps2.whatcomcounty.us/onlineapps/jailrosters/releases/releasev.jsp?date=5/19/2015
+http://apps2.whatcomcounty.us/onlineapps/jailrosters/releases/releasev.jsp?date=5/20/2015
 Each record on these days repeated numerous times. (Likely other days.)
 Clean up with:
  delete from releases where rowid not in (
@@ -78,9 +148,68 @@ booking:
 release:
 71728	PHILLIPS, GERALD ARTHUR	Personal Recognizance	2017-08-03 15:48
 
-Compute duration of jail stay from booking_dt and release_dt. Produces floating point
-fraction of days.
+Confusing records:
+bookings:
+00000C NOMOLOS	SOLOMON, CLIFFORD FRANCIS	DWLS 3RD	IOO	0	2000-12-21 07:53
+31000C NOMOLOS	SOLOMON, CLIFFORD FRANCIS	PROB VIOLATION	WAR	250	2001-01-10 15:31
+releases:
+0	SOLOMON, CLIFFORD FRANCIS	TIME SERVED ON SENTENCE	2001-01-13 05:00
+0	SOLOMON, CLIFFORD FRANCIS	TIME SERVED ON SENTENCE	2001-01-20 15:30
+No release for the 2000-12-21 booking.  Is the 2001-01-13 release for 2000-12-21 or
+2001-01-10?  
 
-    update jail_periods set duration = 
-        julianday( jail_periods.release_dt ) - julianday( jail_periods.booking_dt )
-        where jail_periods.booking_dt is not null and jail_periods.release_dt is not null
+bookings:
+51000JECNERWAL	LAWRENCE, JOCARI JASEANNE	PROB VIOL/THEFT 2ND	WAR	333.34	2001-02-07 01:04	0
+51000JECNERWAL	LAWRENCE, JOCARI JASEANNE	PROB VIOL/THEFT 2ND	WAR	333.33	2001-02-07 01:04	0
+51000JECNERWAL	LAWRENCE, JOCARI JASEANNE	PROB VIOL/THEFT 2ND	WAR	333.33	2001-02-07 01:04	0
+51000JECNERWAL	LAWRENCE, JOCARI JASEANNE	PROB/VIO  THEFT 2	WAR	0	2001-05-08 01:00	1
+51000JECNERWAL	LAWRENCE, JOCARI JASEANNE	PROB VIO THEFT 2	WAR	0	2001-05-08 01:00	0
+releases:
+0	LAWRENCE, JOCARI JASEANNE	REL PER COURT ORDER	2000-06-09 14:20
+0	LAWRENCE, JOCARI JASEANNE	FAIL TO RETURN FROM T/R	2001-05-17 04:49
+0	LAWRENCE, JOCARI JASEANNE	TIME SERVED ON SENTENCE	2001-05-29 05:00
+0	LAWRENCE, JOCARI JASEANNE	PERSONAL RECOGNIZANCE	2001-10-23 11:29
+The release on 5/17/2001 gets associated with the bookings on 5/8.  There is no booking that
+matches the 5/29/2001 release, and no release that matches the 2/7/2001 bookings.
+
+bookings:
+20000S  NOTSEW	WESTON, SANDRA SUE	VIOL DRUG COOURT CONTRACT	WAR	0	2001-09-06 13:32	1
+20000S  NOTSEW	WESTON, SANDRA SUE	VIOL DRUG COURT CONTRACT	WAR	0	2001-09-06 13:32	0
+20000S  NOTSEW	WESTON, SANDRA SUE	FTA:THEFT 3	W/L	0	2001-09-06 13:32	0
+20000S  NOTSEW	WESTON, SANDRA SUE	FTA THEFT 2ND	WAR	500	2002-09-09 17:26	1
+releases:
+0	WESTON, SANDRA SUE	BAIL OR BOND	2002-09-10 19:09
+0	WESTON, SANDRA SUE	BAIL OR BOND	2002-10-11 11:17
+0	WESTON, SANDRA SUE	RELEASE TO TREATMENT	2003-03-07 14:41
+The 9/10/2002 release gets associated with the 9/9/2002 booking.  
+
+bookings:
+0527	KRISHTAL, DENIS VYACHESLAV	DUI	WARR	1000	2016-02-05 23:07	1
+0527	KRISHTAL, DENIS VYACHESLAV	ASSAULT 4TH/FTA	WARR	5000	2016-02-05 23:07	0
+0527	KRISHTAL, DENIS VYACHESLAV	ASSAULT 4TH	DVAI	300	2016-07-18 00:53	1
+0527	KRISHTAL, DENIS VYACHESLAV	MAL MISCH 3RD <$750	DVAY	300	2016-07-18 00:53	0
+0527	KRISHTAL, DENIS VYACHESLAV	OPER VEH. W/OUT IGNITION INTER	TRTC	0	2017-02-17 13:57	1
+0527	KRISHTAL, DENIS VYACHESLAV	MAL MISCH 3RD <$750	MAMI	0	2017-02-17 13:57	0
+releases:
+0527	KRISHTAL, DENIS VYACHESLAV	Time Served	2014-04-15 06:29
+0527	KRISHTAL, DENIS VYACHESLAV	Time Served	2016-04-12 08:00
+0527	KRISHTAL, DENIS VYACHESLAV	Bail or Bond	2016-07-18 09:57
+0527	KRISHTAL, DENIS VYACHESLAV	Transport to Other County	2017-02-17 12:52
+0527	KRISHTAL, DENIS VYACHESLAV	Transport to Other County	2017-02-19 12:05
+The 2017-02-17 booking is later on the same day as a release.  Then there is another
+release two days later.
+
+A large number of bookings missing in late 2013 and 2014.  Example:
+bookings:
+11800010000000	BAILEY, CHARLIE STUART	DUI	IOO	0	2006-08-21 07:00
+3013	BAILEY, CHARLIE STUART	DUI	DUIA	0	2014-09-03 10:03
+releases:
+0	    BAILEY, CHARLIE STUART	TIME SERVED ON SENTENCE	2006-08-23 07:00
+3013	BAILEY, CHARLIE STUART	Bail or Bond	2013-11-25 17:05
+3013	BAILEY, CHARLIE STUART	Time Served	2014-10-02 11:07
+The 2013-11-25 release is missing its booking, so it mistakenly gets assigned
+the 2006-08-11 booking which makes it look like he is in for several years.
+As a booking is associated with a release it must be marked as used so later
+releases for which bookings are missing get marked as missing.
+
+(Pdb) pdb.set_trace = lambda: None  # This replaces the set_trace() function!

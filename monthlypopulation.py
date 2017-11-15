@@ -10,7 +10,7 @@ arguments = sys.argv
 
 def print_usage():
     print ( "USAGE:" )
-    print ( "dailypopulation.py from_month from_year to_month to_year" )
+    print ( "monthlypopulation.py from_month from_year to_month to_year" )
 
 def daterange(start_date, end_date):
     for n in range(int ((end_date - start_date).days)):
