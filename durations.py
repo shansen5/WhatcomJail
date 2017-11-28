@@ -16,12 +16,12 @@ if len(arguments) < 1:
     print_usage()
     sys.exit(1)
 
-sql0 = '''SELECT rowid, booking_row, release_row FROM bookings_releases'''
+sql0 = '''SELECT id, booking_row, release_row FROM bookings_releases'''
 sql1 = '''SELECT julianday( r.release_dt ) - julianday( b.booking_dt ) \
             FROM releases r, bookings b \
-            WHERE b.rowid = ? and r.rowid = ?'''
+            WHERE b.id = ? and r.id = ?'''
 sql2 = '''UPDATE bookings_releases SET duration = ? \
-            WHERE rowid = ?'''
+            WHERE id = ?'''
 
 db = sqlite3.connect( 'jail2.sqlite', detect_types=sqlite3.PARSE_DECLTYPES )
 cursor0 = db.cursor()

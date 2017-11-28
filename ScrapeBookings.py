@@ -3,6 +3,7 @@
 import pdb
 
 import sys
+import sqlite3
 from lxml import html
 import requests
 from datetime import datetime, timedelta
@@ -23,6 +24,9 @@ if ( len( arguments ) < 3 ):
 from_date = datetime.strptime( arguments[1], "%m/%d/%Y" ).date()
 to_date = datetime.strptime( arguments[2], "%m/%d/%Y" ).date()
 url_string = 'http://apps2.whatcomcounty.us/onlineapps/jailrosters/bookings/booking.jsp?date='
+sql = '''INSERT INTO bookings( name_id, name, charges, arrest_type, bail, booking_dt ) \
+        VALUES( ?,?,?,?,?,? )'''
+db = sqlite3.connect( 'jail2.sqlite' )
 
 def process_day( d ):
     url =  url_string + d.strftime( '%m/%d/%Y' )
@@ -38,6 +42,8 @@ def process_day( d ):
     charges = ''
     arrest_type = ''
     bail = 0
+    values_list = list()
+    line_count = 0
     for child in records:
         if ( first ):
             first = False
@@ -51,27 +57,30 @@ def process_day( d ):
             date_string = child[6].text + ' ' + child[7].text
             try:
                 booking_dt = datetime.strptime( date_string, "%Y/%m/%d %H:%M" )
-                print( '"' + id + '","' + name + '","' + charges + '","' + arrest_type + '","' +str( bail ) + '","' + booking_dt.strftime( "%m/%d/%Y %H:%M" ) + '"' )
             except ValueError:
                 try:
                     booking_dt = datetime.strptime( child[6].text, "%Y/%m/%d" )
-                    print( '"' + id + '","' + name + '","' + charges + '","' + arrest_type + '","' + str( bail ) + '","' + booking_dt.strftime( "%m/%d/%Y" ) + '"' )
                 except ValueError:
-                    print( '"' + id + '","' + name + '","' + charges + '","' + str( bail ) + '","1/1/1900"' )
-            # print ( "dt_string: ", date_string )
-            # print ( "ID: ", id )
-            # print ( "Name: ", name )
-            # print ( "Charges: ", charges )
-            # print ( "Arrest Type: ", arrest_type )
-            # print ( "Bail: ", str( bail ))
-            # print ( "Booking Date/Time: ", booking_dt.strftime( "%m/%d/%Y %H:%M" ))
+                    booking_dt = None
+            values_list.append(( id, name, charges, arrest_type, bail, booking_dt ))
+            line_count = line_count + 1
+            if ( line_count >= 50 ):
+                cursor = db.cursor()
+                cursor.executemany( sql, values_list )
+                db.commit()
+                cursor.close()
+                line_count = 0
+                values_list = list()
+                print( "Inserted 50 records" )
+
+    if ( line_count > 0 ):
+        cursor = db.cursor()
+        cursor.executemany( sql, values_list )
+        db.commit()
+        cursor.close()
+        print( 'Inserted ' + str( line_count ) + ' records' )
     
 
 for d in daterange( from_date, to_date ):
     process_day( d )
 
-#    INSERT INTO persons(id, name) 
-#        SELECT 84900, 'BANUELOS, KRYSTINE MONIQUE'
-#                FROM dual
-#                        WHERE NOT EXISTS (SELECT * FROM persons
-#                                                             WHERE id = 84900)

@@ -16,16 +16,16 @@ if len(arguments) < 1:
     print_usage()
     sys.exit(1)
 
-sql0 = '''SELECT rowid, name_id, name, release_dt FROM releases'''
-sql1 = '''SELECT rowid, booking_dt, matched FROM bookings WHERE booking_dt in (\
+sql0 = '''SELECT id, name_id, name, release_dt FROM releases'''
+sql1 = '''SELECT id, booking_dt, matched FROM bookings WHERE booking_dt in (\
             SELECT max(booking_dt) FROM bookings WHERE name_id=? AND \
             booking_dt <= ? ) AND name_id = ?'''
-sql1a = '''SELECT rowid, booking_dt, matched FROM bookings WHERE booking_dt in (\
+sql1a = '''SELECT id, booking_dt, matched FROM bookings WHERE booking_dt in (\
             SELECT max(booking_dt) FROM bookings WHERE name=? AND \
             booking_dt <= ? ) AND name = ?'''
 sql2 = '''INSERT into bookings_releases ( booking_row, release_row ) \
             VALUES (?, ?)'''
-sql3 = '''UPDATE bookings SET matched=1 WHERE rowid = ?'''
+sql3 = '''UPDATE bookings SET matched=1 WHERE id = ?'''
 
 db = sqlite3.connect( 'jail2.sqlite', detect_types=sqlite3.PARSE_DECLTYPES )
 cursor0 = db.cursor()
